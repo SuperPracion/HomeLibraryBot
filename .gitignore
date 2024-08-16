@@ -1,2 +1,5 @@
 /venv/
 /.idea
+book_catalog.db
+config.py
+plans.md
