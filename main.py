@@ -54,32 +54,32 @@ async def get_next_id(cursor: sqlite3.Cursor):
         if id == expected_id:
             expected_id += 1
         else:
-            break
-
-    return expected_id
+            return expected_id
 
 
 # Добавление книги
 @get_cursor
 async def add_book(update: Update, context: CallbackContext, cursor: sqlite3.Cursor):
-    if len(context.args) == 0:
-        await update.message.reply_text("Используйте /add <название книги> для добавления книги.")
-        return
-
     book_name = " ".join(context.args)
     user = update.message.from_user.username
 
     cursor.execute("SELECT holder FROM books")
     holders = [holder[0] for holder in cursor.fetchall()]
 
+    if not context.args:
+        await update.message.reply_text("Используйте /add <название книги> для добавления книги.")
+        return
+
     if len(holders) > config.max_books_in_lib:
         await update.message.reply_text("Превышен лимит книг в Каталоге.")
-    elif holders.count(user) > config.max_books_per_user:
+        return
+
+    if holders.count(user) > config.max_books_per_user:
         await update.message.reply_text("Превышен лимит книг на одного пользователя.")
-    else:
-        cursor.execute("INSERT INTO books (id, name, holder) VALUES (?, ?, ?)",
-                       (await get_next_id(), book_name, user), )
-        await update.message.reply_text(f"Книга '{book_name}' была добавлена в каталог под вашим именем!")
+        return
+
+    cursor.execute("INSERT INTO books (id, name, holder) VALUES (?, ?, ?)", (await get_next_id(), book_name, user), )
+    await update.message.reply_text(f"Книга '{book_name}' была добавлена в каталог под вашим именем!")
 
 
 # Редактирование книги
@@ -96,25 +96,28 @@ async def edit_book(update: Update, context: CallbackContext, cursor: sqlite3.Cu
     cursor.execute("SELECT holder, name FROM books WHERE id = ?", (book_id,))
     book = cursor.fetchone()
 
-    # Если книги нет в бд
-    if book is None:
+    if not book:
         await update.message.reply_text("Книга с таким ID не найдена.")
+        return
 
     # Если текущий пользователь не тот, кто редактирует
     if book[0] != user:
         await update.message.reply_text("Вы не являетесь держателем этой книги и не можете её редактировать.")
-    elif book[0] == user:
-        if book[1] == new_name:
-            await update.message.reply_text("Изменений не обнаружено. Книга уже имеет это название.")
-        else:
-            cursor.execute("UPDATE books SET name = ? WHERE id = ?", (new_name, book_id))
-            await update.message.reply_text(f"Книга с ID {book_id} была обновлена.")
+        return
+
+    # Если нет изменений в Старом и Новом названиях
+    if book[1] == new_name:
+        await update.message.reply_text("Изменений не обнаружено. Книга уже имеет это название.")
+        return
+
+    cursor.execute("UPDATE books SET name = ? WHERE id = ?", (new_name, book_id))
+    await update.message.reply_text(f"Книга с ID {book_id} была обновлена.")
 
 
 # Удаление книги
 @get_cursor
 async def delete_book(update: Update, context: CallbackContext, cursor: sqlite3.Cursor):
-    if len(context.args) == 0:
+    if not context.args:
         await update.message.reply_text("Используйте /delete <ID книги> для удаления книги.")
         return
 
@@ -124,19 +127,22 @@ async def delete_book(update: Update, context: CallbackContext, cursor: sqlite3.
     cursor.execute("SELECT holder FROM books WHERE id = ?", (book_id,))
     book = cursor.fetchone()
 
-    if book is None:
+    if not book:
         await update.message.reply_text("Книга с таким ID не найдена.")
-    elif book[0] == user:
-        cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
-        await update.message.reply_text(f"Книга с ID {book_id} была удалена из каталога.")
-    else:
+        return
+
+    if book[0] != user:
         await update.message.reply_text("Вы не являетесь держателем этой книги и не можете её удалить.")
+        return
+
+    cursor.execute("DELETE FROM books WHERE id = ?", (book_id,))
+    await update.message.reply_text(f"Книга с ID {book_id} была удалена из каталога.")
 
 
 # Взять книгу
 @get_cursor
 async def take_book(update: Update, context: CallbackContext, cursor: sqlite3.Cursor):
-    if len(context.args) == 0:
+    if not context.args:
         await update.message.reply_text("Используйте /take <ID книги> для того, чтобы стать держателем.")
         return
 
@@ -146,13 +152,16 @@ async def take_book(update: Update, context: CallbackContext, cursor: sqlite3.Cu
     cursor.execute("SELECT holder FROM books WHERE id = ?", (book_id,))
     book = cursor.fetchone()
 
-    if book is None:
+    if not book:
         await update.message.reply_text("Книга с таким ID не найдена.")
-    elif book[0] == user:
+        return
+
+    if book[0] == user:
         await update.message.reply_text("Вы уже являетесь держателем этой книги.")
-    else:
-        cursor.execute("UPDATE books SET holder = ? WHERE id = ?", (user, book_id))
-        await update.message.reply_text(f"Вы теперь держатель книги с ID {book_id}.")
+        return
+
+    cursor.execute("UPDATE books SET holder = ? WHERE id = ?", (user, book_id))
+    await update.message.reply_text(f"Вы теперь держатель книги с ID {book_id}.")
 
 
 # Основная функция
