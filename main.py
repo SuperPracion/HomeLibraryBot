@@ -1,4 +1,5 @@
 import sqlite3
+import config
 from telegram import Update
 from telegram.ext import Application, CallbackContext, CommandHandler
 
@@ -16,8 +17,23 @@ async def start(update: Update, context: CallbackContext):
         "редактировать/удалять свои книги с помощью команд /edit и /delete."
     )
 
+# Просмотр каталога
+async def catalog(update: Update, context: CallbackContext):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, holder FROM books")
+    books = cursor.fetchall()
+    conn.close()
 
-# Вспомогательная функция для получения идентификатора следующей книги
+    if len(books) == 0:
+        await update.message.reply_text("Каталог пуст.")
+    else:
+        catalog_list = "\n".join(
+            [f"{book[0]}. {book[1]} (Держатель: @{book[2]})" for book in books]
+        )
+        await update.message.reply_text(f"Книги в каталоге:\n{catalog_list}")
+
+# Вспомогательная функция для add_book. Получение идентификатора дял следующей книги
 def get_next_id():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -35,7 +51,6 @@ def get_next_id():
 
     return expected_id
 
-
 # Добавление книги
 async def add_book(update: Update, context: CallbackContext):
     if len(context.args) == 0:
@@ -47,55 +62,20 @@ async def add_book(update: Update, context: CallbackContext):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO books (id, name, holder) VALUES (?, ?, ?)",(get_next_id(), book_name, user),)
-    conn.commit()
-    conn.close()
+    cursor.execute("SELECT holder FROM books")
+    holders = [holder[0] for holder in cursor.fetchall()]
 
-    await update.message.reply_text(f"Книга '{book_name}' была добавлена в каталог под вашим именем!")
-
-
-# Просмотр каталога
-async def catalog(update: Update, context: CallbackContext):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name, holder FROM books")
-    books = cursor.fetchall()
-    conn.close()
-
-    if len(books) == 0:
-        await update.message.reply_text("Каталог пуст.")
+    if len(holders) > config.max_books_in_lib:
+        await update.message.reply_text("Превышен лимит книг в Каталоге.")
+    elif holders.count(user) > config.max_books_per_user:
+        await update.message.reply_text("Превышен лимит книг на одного пользователя.")
     else:
-        catalog_list = "\n".join(
-            [f"{book[0]}. {book[1]} (Держатель: @{book[2]})" for book in books]
-        )
-        await update.message.reply_text(f"Книги в каталоге:\n{catalog_list}")
-
-
-# Взять книгу
-async def take_book(update: Update, context: CallbackContext):
-    if len(context.args) == 0:
-        await update.message.reply_text("Используйте /take <ID книги> для того, чтобы стать держателем.")
-        return
-
-    book_id = context.args[0]
-    user = update.message.from_user.username
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT holder FROM books WHERE id = ?", (book_id,))
-    book = cursor.fetchone()
-
-    if book is None:
-        await update.message.reply_text("Книга с таким ID не найдена.")
-    elif book[0] == user:
-        await update.message.reply_text("Вы уже являетесь держателем этой книги.")
-    else:
-        cursor.execute("UPDATE books SET holder = ? WHERE id = ?",(user, book_id))
+        cursor.execute("INSERT INTO books (id, name, holder) VALUES (?, ?, ?)",(get_next_id(), book_name, user),)
         conn.commit()
-        await update.message.reply_text(f"Вы теперь держатель книги с ID {book_id}.")
+
+        await update.message.reply_text(f"Книга '{book_name}' была добавлена в каталог под вашим именем!")
 
     conn.close()
-
 
 # Редактирование книги
 async def edit_book(update: Update, context: CallbackContext):
@@ -155,9 +135,33 @@ async def delete_book(update: Update, context: CallbackContext):
 
     conn.close()
 
+# Взять книгу
+async def take_book(update: Update, context: CallbackContext):
+    if len(context.args) == 0:
+        await update.message.reply_text("Используйте /take <ID книги> для того, чтобы стать держателем.")
+        return
+
+    book_id = context.args[0]
+    user = update.message.from_user.username
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT holder FROM books WHERE id = ?", (book_id,))
+    book = cursor.fetchone()
+
+    if book is None:
+        await update.message.reply_text("Книга с таким ID не найдена.")
+    elif book[0] == user:
+        await update.message.reply_text("Вы уже являетесь держателем этой книги.")
+    else:
+        cursor.execute("UPDATE books SET holder = ? WHERE id = ?",(user, book_id))
+        conn.commit()
+        await update.message.reply_text(f"Вы теперь держатель книги с ID {book_id}.")
+
+    conn.close()
 
 # Основная функция
-application = (Application.builder().token("").build())
+application = (Application.builder().token(config.token_name).build())
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("add", add_book))
