@@ -1,8 +1,7 @@
 import sqlite3
-from random import randint, randrange
+from random import randrange
 
 import config
-import random
 from telegram import Update
 from telegram.ext import Application, CallbackContext, CommandHandler
 
@@ -34,7 +33,12 @@ def black_list_check(func):
 
 
 # Команда /start
-async def start(update: Update, context: CallbackContext):
+@get_cursor
+async def start(update: Update, context: CallbackContext, cursor: sqlite3.Cursor):
+    user_name = update.message.from_user.username
+    chat_id = update.message.chat_id
+    cursor.execute(f"INSERT INTO users (user_name, chat_id) VALUES (?, ?)", (user_name, chat_id))
+
     await update.message.reply_text(
         "Привет! Это книжный каталог. Вы можете добавлять книги с помощью команды /add, "
         "просматривать каталог с помощью команды /catalog, брать книги через команду /take и "
@@ -75,6 +79,19 @@ async def get_next_id(cursor: sqlite3.Cursor):
             return expected_id
 
 
+# Вспомогательная функция broadcast новой записи
+@get_cursor
+async def broadcast(update: Update, context: CallbackContext, cursor: sqlite3.Cursor, book_name: str):
+    user_name = update.message.from_user.username
+
+    #Отложено до тестирования cursor.execute("SELECT DISTINCT chat_id FROM users WHERE user_name <> ?", (user_name,))
+    cursor.execute("SELECT DISTINCT chat_id FROM users")
+    chat_ids = cursor.fetchall()
+
+    for id in chat_ids:
+        await context.bot.send_message(chat_id=id[0], text=f"@{user_name} добавил книгу {book_name}!")
+
+
 # Добавление книги
 @get_cursor
 @black_list_check
@@ -90,7 +107,7 @@ async def add_book(update: Update, context: CallbackContext, cursor: sqlite3.Cur
         return
 
     # Проверка на не превышение общего лимита
-    if len(holders) > config.max_books_in_lib:
+    if len(holders) >= config.max_books_in_lib:
         await update.message.reply_text("Превышен лимит книг в Каталоге.")
         return
 
@@ -101,6 +118,7 @@ async def add_book(update: Update, context: CallbackContext, cursor: sqlite3.Cur
 
     cursor.execute("INSERT INTO books (id, name, holder) VALUES (?, ?, ?)", (await get_next_id(), book_name, user), )
     await update.message.reply_text(f"Книга '{book_name}' была добавлена в каталог под вашим именем!")
+    await broadcast(update, context, book_name=book_name)
 
 
 # Редактирование книги
