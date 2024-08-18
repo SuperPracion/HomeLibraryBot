@@ -37,7 +37,8 @@ def black_list_check(func):
 async def start(update: Update, context: CallbackContext, cursor: sqlite3.Cursor):
     user_name = update.message.from_user.username
     chat_id = update.message.chat_id
-    cursor.execute(f"INSERT INTO users (user_name, chat_id) VALUES (?, ?)", (user_name, chat_id))
+    cursor.execute("INSERT OR IGNORE INTO users (user_name, chat_id) VALUES (?, ?)",
+                   (user_name, chat_id))
 
     await update.message.reply_text(
         "Привет! Это книжный каталог. Вы можете добавлять книги с помощью команды /add, "
@@ -84,7 +85,7 @@ async def get_next_id(cursor: sqlite3.Cursor):
 async def broadcast(update: Update, context: CallbackContext, cursor: sqlite3.Cursor, book_name: str):
     user_name = update.message.from_user.username
 
-    #Отложено до тестирования cursor.execute("SELECT DISTINCT chat_id FROM users WHERE user_name <> ?", (user_name,))
+    # Отложено до тестирования cursor.execute("SELECT DISTINCT chat_id FROM users WHERE user_name <> ?", (user_name,))
     cursor.execute("SELECT DISTINCT chat_id FROM users")
     chat_ids = cursor.fetchall()
 
@@ -219,6 +220,7 @@ async def random(update: Update, context: CallbackContext, cursor: sqlite3.Curso
     book = books[randrange(len(books))]
     await update.message.reply_text(f"Предлагаю попробовать {book[0]}. {book[1]} (Держатель: @{book[2]})")
 
+
 def main():
     # Основная функция
     application = (Application.builder().token(config.token_name).build())
@@ -232,6 +234,7 @@ def main():
     application.add_handler(CommandHandler("random", random))
 
     application.run_polling()
+
 
 if __name__ == "__main__":
     main()
