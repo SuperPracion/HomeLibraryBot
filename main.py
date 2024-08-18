@@ -219,16 +219,19 @@ async def random(update: Update, context: CallbackContext, cursor: sqlite3.Curso
     book = books[randrange(len(books))]
     await update.message.reply_text(f"Предлагаю попробовать {book[0]}. {book[1]} (Держатель: @{book[2]})")
 
+def main():
+    # Основная функция
+    application = (Application.builder().token(config.token_name).build())
 
-# Основная функция
-application = (Application.builder().token(config.token_name).build())
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("add", add_book))
+    application.add_handler(CommandHandler("catalog", catalog))
+    application.add_handler(CommandHandler("take", take_book))
+    application.add_handler(CommandHandler("edit", edit_book))
+    application.add_handler(CommandHandler("delete", delete_book))
+    application.add_handler(CommandHandler("random", random))
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("add", add_book))
-application.add_handler(CommandHandler("catalog", catalog))
-application.add_handler(CommandHandler("take", take_book))
-application.add_handler(CommandHandler("edit", edit_book))
-application.add_handler(CommandHandler("delete", delete_book))
-application.add_handler(CommandHandler("random", random))
+    application.run_polling()
 
-application.run_polling()
+if __name__ == "__main__":
+    main()
